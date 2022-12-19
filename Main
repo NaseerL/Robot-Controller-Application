@@ -1,0 +1,659 @@
+import os
+import time
+import sys
+import serial
+import tkinter
+import serial.tools.list_ports
+from PyQt5 import QtWidgets
+from PyQt5.QtWidgets import *
+from PyQt5.QtMultimedia import *
+from PyQt5.QtMultimediaWidgets import *
+import tkinter as tk
+from PyQt5.QtGui import *
+
+import threading
+
+
+ser = serial.Serial()
+ports = serial.tools.list_ports.comports()
+#global portList
+portList = []
+get_com = 'NULL'
+
+for onePort in ports:
+    portList.append(str(onePort))
+
+
+tkTop = tkinter.Tk()
+screen_width = tkTop.winfo_screenwidth()
+screen_height = tkTop.winfo_screenheight()
+
+
+
+
+class MyWindow(QMainWindow):
+    def __init__(self):
+        
+        #global do_something
+        global camera_selector
+        global comport_selector
+        global click_refresh
+        global select_camera
+        global portList
+        global get_com
+
+        #self.comport_selector = None
+
+        super(MyWindow,self).__init__()
+        # setting style sheet
+        #self.setStyleSheet("background : lightgrey;")
+  
+        # getting available cameras
+        self.available_cameras = QCameraInfo.availableCameras()
+  
+        # if no camera found
+        if not self.available_cameras:
+            # exit the code
+            sys.exit()
+  
+        # creating a status bar
+        self.status = QStatusBar()
+  
+        # setting style sheet to the status bar
+        #self.status.setStyleSheet("background : white;")
+  
+        # adding status bar to the main window
+        self.setStatusBar(self.status)
+  
+        # path to save
+        self.save_path = ""
+  
+        # creating a QCameraViewfinder object
+        self.viewfinder = QCameraViewfinder()
+  
+        # showing this viewfinder
+        self.viewfinder.show()
+  
+        # making it central widget of main window
+        self.setCentralWidget(self.viewfinder)
+  
+        # Set the default camera.
+        self.select_camera(0)
+  
+        # creating a tool bar
+        toolbar = QToolBar("Camera Tool Bar")
+        toolbar.setFont(QFont('Times', 15))
+
+        
+  
+        # adding tool bar to main window
+        self.addToolBar(toolbar)
+
+        temp = QAction("MENU", self)
+        temp.setStatusTip("MENU")
+        temp.setToolTip("MENU")
+        toolbar.addAction(temp)
+  
+        # creating a photo action to take photo
+        click_action = QAction("Click photo", self)
+  
+        # adding status tip to the photo action
+        click_action.setStatusTip("This will capture picture")
+  
+        # adding tool tip
+        click_action.setToolTip("Capture picture")
+  
+  
+        # adding action to it
+        # calling take_photo method
+        click_action.triggered.connect(self.click_photo)
+  
+        # adding this to the tool bar
+        toolbar.addAction(click_action)
+  
+        # similarly creating action for changing save folder
+        change_folder_action = QAction("Change save location",
+                                       self)
+  
+        # adding status tip
+        change_folder_action.setStatusTip("Change folder where picture will be saved saved.")
+  
+        # adding tool tip to it
+        change_folder_action.setToolTip("Change save location")
+  
+        # setting calling method to the change folder action
+        # when triggered signal is emitted
+        change_folder_action.triggered.connect(self.change_folder)
+  
+        # adding this to the tool bar
+        toolbar.addAction(change_folder_action)
+
+
+        click_restart = QAction("Refresh", self)
+        click_restart.setStatusTip("Clear Camera Buffer")
+        click_restart.setToolTip("Clear Buffer")
+        click_restart.triggered.connect(self.clear_camera_buffer)
+        toolbar.addAction(click_restart)
+  
+  
+        # creating a combo box for selecting camera
+        camera_selector = QComboBox()
+
+        # creating a combo box for selecting comport
+        comport_selector = QComboBox()
+  
+        # adding status tip to it
+        camera_selector.setStatusTip("Choose camera to take pictures")
+
+        # adding status tip to it
+        comport_selector.setStatusTip("Choose com port connected to arduino")
+  
+        # adding tool tip to it
+        camera_selector.setToolTip("Select Camera")
+        camera_selector.setToolTipDuration(2500)
+
+        # adding tool tip to it
+        comport_selector.setToolTip("Select com port")
+        comport_selector.setToolTipDuration(2500)
+  
+        # adding items to the combo box
+        camera_selector.addItems([camera.description()
+                                  for camera in self.available_cameras])
+
+
+        c = 0
+        for onePort in ports:
+            comport_selector.addItems([portList[c]])
+            c = c+1
+
+  
+        # adding action to the combo box
+        # calling the select camera method
+        camera_selector.currentIndexChanged.connect(self.select_camera)
+        #click_refresh.triggered.connect(self.refresh_application)
+
+
+        # adding action to the combo box
+        # calling the select camera method
+        comport_selector.currentIndexChanged.connect(self.select_comport)
+        text = str(comport_selector.currentText())
+  
+        # adding this to tool bar
+        toolbar.addWidget(camera_selector)
+
+        # adding this to tool bar
+        toolbar.addWidget(comport_selector)
+  
+        # setting tool bar stylesheet
+        toolbar.setStyleSheet("background : white;")
+  
+  
+        # setting window title
+        self.setWindowTitle("IAS Control System")
+  
+
+        #click_b1 = QAction("Click photo", self)
+        
+        self.label = QtWidgets.QLabel(self)
+ 
+        self.b1 = QtWidgets.QPushButton(self)
+        self.b1.setText("STOP          🛑")
+        self.b1.setFont(QFont('Arial', 12))
+        self.b1.setStyleSheet("background-color : red")
+        self.b1.clicked.connect(self.button1_clicked)
+        self.b1.resize(220, 180)
+        self.b1.move(int(13.2*(screen_width/10)),int(1.0*(screen_height/10)))
+
+
+        self.b2 = QtWidgets.QPushButton(self)
+        self.b2.setText("FORWARD   ⏩")
+        self.b2.setFont(QFont('Arial', 12))
+        self.b2.clicked.connect(self.button2_clicked)
+        self.b2.resize(220, 180)
+        self.b2.move(int(13.2*(screen_width/10)),int(3.5*(screen_height/10)))
+
+        self.b3 = QtWidgets.QPushButton(self)
+        self.b3.setText("REVERSE     ⏪")
+        self.b3.setFont(QFont('Arial', 12))
+        self.b3.clicked.connect(self.button3_clicked)
+        self.b3.resize(220, 180)
+        self.b3.move(int(13.2*(screen_width/10)),int(6.0*(screen_height/10)))
+
+        self.b4 = QtWidgets.QPushButton(self)
+        self.b4.setText("POWER UP    ⬆️")
+        self.b4.setFont(QFont('Arial', 12))
+        self.b4.clicked.connect(self.button4_clicked)
+        self.b4.resize(220, 180)
+        self.b4.move(int(13.2*(screen_width/10)),int(8.5*(screen_height/10)))
+
+        self.b5 = QtWidgets.QPushButton(self)
+        self.b5.setText("POWER DOWN⬇️")
+        self.b5.setFont(QFont('Arial', 12))
+        self.b5.clicked.connect(self.button5_clicked)
+        self.b5.resize(220, 180)
+        self.b5.move(int(13.2*(screen_width/10)),int(11.0*(screen_height/10)))
+
+
+
+
+
+        self.b6 = QtWidgets.QPushButton(self)
+        self.b6.setText("24 ft/min")
+        self.b6.setFont(QFont('Arial', 15))
+        self.b6.clicked.connect(self.button6_clicked)
+        self.b6.resize(220, 150)
+        self.b6.move(int(0.1*(screen_width/10)),int(1.0*(screen_height/10)))
+
+        self.b7 = QtWidgets.QPushButton(self)
+        self.b7.setText("20 ft/min")
+        self.b7.setFont(QFont('Arial', 15))
+        self.b7.clicked.connect(self.button7_clicked)
+        self.b7.resize(220, 150)
+        self.b7.move(int(0.1*(screen_width/10)),int(3.0*(screen_height/10)))
+
+        self.b8 = QtWidgets.QPushButton(self)
+        self.b8.setText("16 ft/min")
+        self.b8.setFont(QFont('Arial', 15))
+        self.b8.clicked.connect(self.button8_clicked)
+        self.b8.resize(220, 150)
+        self.b8.move(int(0.1*(screen_width/10)),int(5.0*(screen_height/10)))
+
+        self.b9 = QtWidgets.QPushButton(self)
+        self.b9.setText("12 ft/min")
+        self.b9.setFont(QFont('Arial', 15))
+        self.b9.clicked.connect(self.button9_clicked)
+        self.b9.resize(220, 150)
+        self.b9.move(int(0.1*(screen_width/10)),int(7.0*(screen_height/10)))
+
+        self.b10 = QtWidgets.QPushButton(self)
+        self.b10.setText("8 ft/min")
+        self.b10.setFont(QFont('Arial', 15))
+        self.b10.clicked.connect(self.button10_clicked)
+        self.b10.resize(220, 150)
+        self.b10.move(int(0.1*(screen_width/10)),int(9.0*(screen_height/10)))
+
+        self.b11 = QtWidgets.QPushButton(self)
+        self.b11.setText("4 ft/min")
+        self.b11.setFont(QFont('Arial', 15))
+        self.b11.clicked.connect(self.button11_clicked)
+        self.b11.resize(220, 150)
+        self.b11.move(int(0.1*(screen_width/10)),int(11.0*(screen_height/10)))
+
+
+        
+        if not portList:
+            pass
+        else:
+            s = portList[0].split(" ")
+            for i in s:
+        
+                # Comparing the current word
+                # with the word to be searched
+                if (i == "Arduino"):
+
+                    get_com = portList[0]
+
+                    num = ""
+                    for c in get_com:
+                        if c.isdigit():
+                            num = num + c
+                    
+                    if (int(num) > 10) and (int(num) < 100):
+                        first_1 = int(str(num)[:1])
+                        num = first_1
+
+                    if int(num) > 99:
+                        first_2 = int(str(num)[:2])
+                        num = first_2
+
+
+                    ser.baudrate = 9600
+                    portVar = "COM" + str(num)
+                    ser.port = portVar
+                    ser.open()
+
+
+        self.clear_camera_buffer()
+        
+        # showing the main window
+        self.show()
+        #comport_selector.update()
+
+
+    def select_comport(self, i):
+    
+        global get_com
+        global portList
+
+
+        z = 0
+        comport = []
+        get_com = []
+        comport = portList[i]
+        get_com = portList[i]
+
+        inp_str = portList[i]
+
+        num = ""
+        for c in inp_str:
+            if c.isdigit():
+                num = num + c
+        
+        if (int(num) > 10) and (int(num) < 100):
+            first_1 = int(str(num)[:1])
+            num = first_1
+
+        if int(num) > 99:
+            first_2 = int(str(num)[:2])
+            num = first_2
+        
+
+        # To break the sentence in words
+        s = portList[i].split(" ")
+
+
+        term = "Arduino"
+        if term not in s:
+            ser.close()
+    
+        for i in s:
+    
+            # Comparing the current word
+            # with the word to be searched
+            if (i == "Arduino"):
+                ser.baudrate = 9600
+                portVar = "COM" + str(num)
+                ser.port = portVar
+                ser.open()
+
+
+
+
+
+    def select_camera(self, i):
+
+        
+        
+        # getting the selected camera
+        self.camera = QCamera(self.available_cameras[i])
+  
+        # setting view finder to the camera
+        self.camera.setViewfinder(self.viewfinder)
+  
+        # setting capture mode to the camera
+        self.camera.setCaptureMode(QCamera.CaptureStillImage)
+  
+        # if any error occur show the alert
+        self.camera.error.connect(lambda: self.alert(self.camera.errorString()))
+  
+        # start the camera
+        self.camera.start()
+
+        # creating a QCameraImageCapture object
+        self.capture = QCameraImageCapture(self.camera)
+  
+        # showing alert if error occur
+        self.capture.error.connect(lambda error_msg, error,
+                                   msg: self.alert(msg))
+  
+        # when image captured showing message
+        self.capture.imageCaptured.connect(lambda d,
+                                           i: self.status.showMessage("Image captured : " 
+                                                                      + str(self.save_seq)))
+  
+        # getting current camera name
+        self.current_camera_name = self.available_cameras[i].description()
+  
+        # initial save sequence
+        self.save_seq = 0
+
+        #index = self.camera_selector.currentIndex()
+        
+
+
+
+    # method to take photo
+    def click_photo(self):
+  
+        # time stamp
+        timestamp = time.strftime("%d-%b-%Y-%H_%M_%S")
+  
+        # capture the image and save it on the save path
+        self.capture.capture(os.path.join(self.save_path, 
+                                          "%s-%04d-%s.jpg" % (
+            self.current_camera_name,
+            self.save_seq,
+            timestamp
+        )))
+  
+        # increment the sequence
+        self.save_seq += 1
+
+
+    # change folder method
+    def change_folder(self):
+  
+        # open the dialog to select path
+        path = QFileDialog.getExistingDirectory(self, 
+                                                "Picture Location", "")
+  
+        # if path is selected
+        if path:
+  
+            # update the path
+            self.save_path = path
+  
+            # update the sequence
+            self.save_seq = 0
+  
+    # method for alerts
+    def alert(self, msg):
+  
+        # error message
+        error = QErrorMessage(self)
+  
+        # setting text to the error message
+        error.showMessage(msg)
+
+
+
+    def button1_clicked(self):
+            
+        # To break the sentence in words
+        s = get_com
+        s = s.split(" ")
+        
+        for i in s:
+        
+            # Comparing the current word
+            # with the word to be searched
+            if (i == "Arduino"):
+                ser.write(bytes('S', 'UTF-8'))
+                self.update()
+                    
+
+
+
+    def button2_clicked(self, i):
+
+        # To break the sentence in words
+        s = get_com
+        s = s.split(" ")
+    
+        for i in s:
+    
+            # Comparing the current word
+            # with the word to be searched
+            if (i == "Arduino"):
+                #self.label.setText("FORWARD")
+                ser.write(bytes('F', 'UTF-8'))
+                self.update()
+
+
+
+    def button3_clicked(self, i):
+
+        # To break the sentence in words
+        s = get_com
+        s = s.split(" ")
+    
+        for i in s:
+    
+            # Comparing the current word
+            # with the word to be searched
+            if (i == "Arduino"):
+                #self.label.setText("REVERSE")
+                ser.write(bytes('R', 'UTF-8'))
+                self.update()
+        
+
+
+
+    def button4_clicked(self, i):
+
+        # To break the sentence in words
+        s = get_com
+        s = s.split(" ")
+    
+        for i in s:
+    
+            # Comparing the current word
+            # with the word to be searched
+            if (i == "Arduino"):
+                #self.label.setText("SPEED UP")
+                ser.write(bytes('U', 'UTF-8'))
+                self.update()
+
+
+
+
+    def button5_clicked(self, i):
+
+        # To break the sentence in words
+        s = get_com
+        s = s.split(" ")
+    
+        for i in s:
+    
+            # Comparing the current word
+            # with the word to be searched
+            if (i == "Arduino"):
+                #self.label.setText("SPEED DOWN")
+                ser.write(bytes('D', 'UTF-8'))
+                self.update()
+
+
+    def button6_clicked(self, i):
+
+        # To break the sentence in words
+        s = get_com
+        s = s.split(" ")
+    
+        for i in s:
+    
+            # Comparing the current word
+            # with the word to be searched
+            if (i == "Arduino"):
+                ser.write(bytes('T', 'UTF-8'))
+                self.update()
+
+
+    def button7_clicked(self, i):
+
+        # To break the sentence in words
+        s = get_com
+        s = s.split(" ")
+    
+        for i in s:
+    
+            # Comparing the current word
+            # with the word to be searched
+            if (i == "Arduino"):
+                ser.write(bytes('V', 'UTF-8'))
+                self.update()
+
+
+    def button8_clicked(self, i):
+
+        # To break the sentence in words
+        s = get_com
+        s = s.split(" ")
+    
+        for i in s:
+    
+            # Comparing the current word
+            # with the word to be searched
+            if (i == "Arduino"):
+                ser.write(bytes('W', 'UTF-8'))
+                self.update()
+
+
+    def button9_clicked(self, i):
+
+        # To break the sentence in words
+        s = get_com
+        s = s.split(" ")
+    
+        for i in s:
+    
+            # Comparing the current word
+            # with the word to be searched
+            if (i == "Arduino"):
+                ser.write(bytes('X', 'UTF-8'))
+                self.update()
+
+
+    def button10_clicked(self, i):
+
+        # To break the sentence in words
+        s = get_com
+        s = s.split(" ")
+    
+        for i in s:
+    
+            # Comparing the current word
+            # with the word to be searched
+            if (i == "Arduino"):
+                ser.write(bytes('Y', 'UTF-8'))
+                self.update()
+
+
+    def button11_clicked(self, i):
+
+        # To break the sentence in words
+        s = get_com
+        s = s.split(" ")
+    
+        for i in s:
+    
+            # Comparing the current word
+            # with the word to be searched
+            if (i == "Arduino"):
+                ser.write(bytes('Z', 'UTF-8'))
+                self.update()
+
+
+    def update(self):        
+        self.label.adjustSize()
+
+
+
+    def clear_camera_buffer(self): 
+
+        threading.Timer(60.0, self.clear_camera_buffer).start()
+        self.camera.stop()
+        self.camera.start()
+
+
+
+
+root = tk.Tk()
+
+def window():
+
+    app = QtWidgets.QApplication(sys.argv)
+    win = MyWindow()
+    win.show()
+    sys.exit(app.exec_())
+
+window()
